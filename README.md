@@ -1,5 +1,14 @@
 # azooKey on macOS
 
+> [!NOTE]
+> このリポジトリは [azooKey/azooKey-Desktop](https://github.com/azooKey/azooKey-Desktop) の個人用フォークです。
+> 以下の変更を加えています。
+>
+> - USキーボードで Caps Lock を英数/かなの切り替えに使用（Shift+Caps LockでCaps Lock）
+> - いい感じ変換に OpenCode Go（OpenAI互換API）のプリセットを追加
+>
+> ビルド済みアプリは GitHub Actions の `Build Fork App` からダウンロードできます。
+
 [azooKey](https://github.com/ensan-hcl/azooKey)のmacOS版です。高精度なニューラルかな漢字変換エンジン「Zenzai」を導入した、オープンソースの日本語入力システムです。
 
 **現在アルファ版のため、動作は一切保証できません**。

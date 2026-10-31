@@ -62,6 +62,12 @@ extension Config {
         static let `default` = false
         public static let key: String = "dev.ensan.inputmethod.azooKeyMac.preference.optionDirectFullWidthInput"
     }
+    /// Caps Lockで英数/かなを切り替える設定
+    public struct CapsLockInputModeSwitch: BoolConfigItem {
+        public init() {}
+        static let `default` = true
+        public static let key: String = "dev.ensan.inputmethod.azooKeyMac.preference.capsLockInputModeSwitch"
+    }
     /// AI変換時にコンテキストを含めるかどうか
     public struct IncludeContextInAITransform: BoolConfigItem {
         public init() {}

@@ -155,6 +155,7 @@ class azooKeyMacInputController: IMKInputController, NSMenuItemValidation { // s
         // ピン留めプロンプトのキャッシュを更新
         self.reloadPinnedPromptsCache()
         self.segmentsManager.activate()
+        CapsLockInputModeMonitor.shared.setActiveController(self)
 
         if let client = sender as? IMKTextInput {
             client.overrideKeyboard(withKeyboardNamed: Config.KeyboardLayout().value.layoutIdentifier)
@@ -174,6 +175,7 @@ class azooKeyMacInputController: IMKInputController, NSMenuItemValidation { // s
 
     @MainActor
     override func deactivateServer(_ sender: Any!) {
+        CapsLockInputModeMonitor.shared.clearActiveController(self)
         self.segmentsManager.deactivate(flushLearningData: false)
         (NSApplication.shared.delegate as? AppDelegate)?.scheduleLearningDataCommit()
         self.inputState = .none
@@ -573,6 +575,27 @@ class azooKeyMacInputController: IMKInputController, NSMenuItemValidation { // s
         case .japanese:
             client.selectMode("dev.ensan.inputmethod.azooKeyMac.Japanese")
         }
+    }
+
+    /// Caps Lockによる英数/かなの切り替え。
+    /// JISキーボードの「英数」「かな」キーを押したときと同じ処理を行う。
+    @MainActor
+    func toggleInputLanguageForCapsLock() {
+        guard let client = self.client() else {
+            return
+        }
+        let target: InputLanguage = self.inputLanguage == .japanese ? .english : .japanese
+        let action: UserAction = target == .english ? .英数 : .かな
+        self.appendDebugMessage("Caps Lock: switch input language to \(target == .english ? "english" : "japanese")")
+        let (clientAction, clientActionCallback) = self.inputState.event(
+            eventCore: .init(modifierFlags: [], characters: nil, charactersIgnoringModifiers: nil, keyCode: 0),
+            userAction: action,
+            inputLanguage: self.inputLanguage,
+            liveConversionEnabled: self.liveConversionEnabled,
+            enableDebugWindow: false,
+            enableSuggestion: false
+        )
+        _ = self.handleClientAction(clientAction, clientActionCallback: clientActionCallback, client: client)
     }
 
     func refreshCandidateWindow() {

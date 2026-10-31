@@ -196,9 +196,15 @@ public struct OpenAIRequest {
     let target: String
     let modelName: String
 
+    private static let jsonInstruction = """
+    Return only a JSON object in the following format:
+    {"predictions": ["candidate 1", "candidate 2", ...]}
+    Do not include markdown code fences or any other text.
+    """
+
     // リクエストをJSON形式に変換する関数
-    func toJSON() -> [String: Any] {
-        [
+    func toJSON(includeResponseFormat: Bool = true) -> [String: Any] {
+        var body: [String: Any] = [
             "model": modelName,
             "messages": [
                 ["role": "system", "content": "You are an assistant that predicts the continuation of short text."],
@@ -206,9 +212,12 @@ public struct OpenAIRequest {
                     \(Prompt.getPromptText(for: target))
 
                     `\(prompt)<\(target)>`
+                    \(includeResponseFormat ? "" : Self.jsonInstruction)
                     """]
-            ],
-            "response_format": [
+            ]
+        ]
+        if includeResponseFormat {
+            body["response_format"] = [
                 "type": "json_schema",
                 "json_schema": [
                     "name": "prediction_response",
@@ -229,7 +238,8 @@ public struct OpenAIRequest {
                     ] as [String: Any]
                 ] as [String: Any]
             ] as [String: Any]
-        ]
+        }
+        return body
     }
 }
 
@@ -269,19 +279,45 @@ public enum OpenAIError: LocalizedError, @unchecked Sendable {
 
 // OpenAI APIクライアント
 public enum OpenAIClient {
+    private static let openCodeSessionID = UUID().uuidString
+
     // APIリクエストを送信する静的メソッド
     public static func sendRequest(_ request: OpenAIRequest, apiKey: String, apiEndpoint: String, logger: ((String) -> Void)? = nil) async throws -> [String] {
-        guard let url = URL(string: apiEndpoint) else {
-            throw OpenAIError.invalidURL
+        do {
+            return try await self.performRequest(
+                request,
+                apiKey: apiKey,
+                apiEndpoint: apiEndpoint,
+                includeResponseFormat: true,
+                logger: logger
+            )
+        } catch let error as OpenAIError {
+            guard self.shouldRetryWithoutResponseFormat(error) else {
+                throw error
+            }
+            logger?("Retrying without response_format after error: \(error.localizedDescription)")
+            return try await self.performRequest(
+                request,
+                apiKey: apiKey,
+                apiEndpoint: apiEndpoint,
+                includeResponseFormat: false,
+                logger: logger
+            )
         }
+    }
 
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body = request.toJSON()
-        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+    private static func performRequest(
+        _ request: OpenAIRequest,
+        apiKey: String,
+        apiEndpoint: String,
+        includeResponseFormat: Bool,
+        logger: ((String) -> Void)?
+    ) async throws -> [String] {
+        let urlRequest = try self.makeURLRequest(
+            body: request.toJSON(includeResponseFormat: includeResponseFormat),
+            apiKey: apiKey,
+            apiEndpoint: apiEndpoint
+        )
 
         // 非同期でリクエストを送信
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
@@ -297,7 +333,35 @@ public enum OpenAIClient {
         }
 
         // レスポンスデータの解析
-        return try parseResponseData(data, logger: logger)
+        return try self.parseResponseData(data, logger: logger)
+    }
+
+    private static func makeURLRequest(body: [String: Any], apiKey: String, apiEndpoint: String) throws -> URLRequest {
+        guard let url = URL(string: apiEndpoint) else {
+            throw OpenAIError.invalidURL
+        }
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("azooKeyMac/1.0 (macOS input method)", forHTTPHeaderField: "User-Agent")
+        if url.host?.hasSuffix("opencode.ai") == true {
+            urlRequest.setValue(Self.openCodeSessionID, forHTTPHeaderField: "x-opencode-session")
+        }
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return urlRequest
+    }
+
+    private static func shouldRetryWithoutResponseFormat(_ error: OpenAIError) -> Bool {
+        switch error {
+        case .invalidResponseStatus(let code, _):
+            return code == 400 || code == 422
+        case .parseError, .invalidResponseStructure:
+            return true
+        case .invalidURL, .noServerResponse:
+            return false
+        }
     }
 
     // レスポンスデータのパースを行う静的メソッド
@@ -318,74 +382,149 @@ public enum OpenAIClient {
         }
 
         var allPredictions: [String] = []
+        var foundContent = false
         for choice in choices {
-            guard let message = choice["message"] as? [String: Any],
-                  let contentString = message["content"] as? String else {
+            guard let message = choice["message"] as? [String: Any] else {
                 continue
             }
-
-            logger?("Raw content string: \(contentString)")
-
-            guard let contentData = contentString.data(using: .utf8) else {
-                logger?("Failed to convert `content` string to data")
-                continue
-            }
-
-            do {
-                guard let parsedContent = try JSONSerialization.jsonObject(with: contentData) as? [String: [String]],
-                      let predictions = parsedContent["predictions"] else {
-                    logger?("Failed to parse `content` as expected JSON dictionary: \(contentString)")
-                    continue
+            for contentString in self.contentStrings(from: message) {
+                foundContent = true
+                logger?("Raw content string: \(contentString)")
+                let predictions = self.parsePredictions(from: contentString)
+                if predictions.isEmpty {
+                    logger?("Failed to parse `content`: \(contentString)")
                 }
-
                 logger?("Parsed predictions: \(predictions)")
                 allPredictions.append(contentsOf: predictions)
-            } catch {
-                logger?("Error parsing JSON from `content`: \(error.localizedDescription)")
             }
         }
 
+        guard !allPredictions.isEmpty else {
+            if foundContent {
+                throw OpenAIError.parseError("No predictions found in response")
+            }
+            throw OpenAIError.invalidResponseStructure(jsonObject)
+        }
         return allPredictions
+    }
+
+    private static func contentStrings(from message: [String: Any]) -> [String] {
+        if let content = message["content"] as? String {
+            return [content]
+        }
+        if let parts = message["content"] as? [[String: Any]] {
+            return parts.compactMap { $0["text"] as? String }
+        }
+        return []
+    }
+
+    static func parsePredictions(from rawContent: String) -> [String] {
+        let content = self.stripMarkdownFence(rawContent)
+        if let object = self.jsonObject(from: content), let predictions = self.predictions(fromJSON: object) {
+            return predictions
+        }
+        if let start = content.firstIndex(where: { $0 == "{" || $0 == "[" }),
+           let end = content.lastIndex(where: { $0 == "}" || $0 == "]" }),
+           start < end,
+           let object = self.jsonObject(from: String(content[start...end])),
+           let predictions = self.predictions(fromJSON: object) {
+            return predictions
+        }
+
+        // JSONとして解釈できない場合は行単位のテキストとして扱う
+        var seen = Set<String>()
+        let lines = content.components(separatedBy: .newlines)
+            .compactMap { self.cleanFallbackLine($0) }
+            .filter { line in
+                !line.hasPrefix("```") && !line.hasPrefix("Predictions:")
+            }
+        return lines.filter { seen.insert($0).inserted }.prefix(10).map { $0 }
+    }
+
+    private static func cleanFallbackLine(_ rawLine: String) -> String? {
+        var line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !line.isEmpty else {
+            return nil
+        }
+        if let range = line.range(of: #"^\s*(?:[-*・]|\d+[.)])\s+"#, options: .regularExpression) {
+            line = String(line[range.upperBound...])
+        }
+        line = line.trimmingCharacters(in: CharacterSet(charactersIn: "\"'[] "))
+        return line.isEmpty ? nil : line
+    }
+
+    private static func jsonObject(from string: String) -> Any? {
+        guard let data = string.data(using: .utf8) else {
+            return nil
+        }
+        return try? JSONSerialization.jsonObject(with: data)
+    }
+
+    private static func predictions(fromJSON object: Any) -> [String]? {
+        if let dictionary = object as? [String: Any] {
+            if let predictions = dictionary["predictions"] as? [String] {
+                return predictions
+            }
+            if let result = dictionary["result"] as? String {
+                return [result]
+            }
+            if let data = dictionary["data"] as? [String] {
+                return data
+            }
+        }
+        if let array = object as? [String] {
+            return array
+        }
+        return nil
+    }
+
+    private static func stripMarkdownFence(_ raw: String) -> String {
+        var content = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard content.hasPrefix("```") else {
+            return content
+        }
+        if let newline = content.firstIndex(of: "\n") {
+            content = String(content[content.index(after: newline)...])
+        }
+        if let range = content.range(of: "```", options: .backwards) {
+            content = String(content[..<range.lowerBound])
+        }
+        return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // Simple text transformation method for AI Transform feature
     public static func sendTextTransformRequest(prompt: String, modelName: String, apiKey: String, apiEndpoint: String) async throws -> String {
-        guard let url = URL(string: apiEndpoint) else {
-            throw OpenAIError.invalidURL
+        do {
+            return try await self.performTextTransformRequest(
+                prompt: prompt,
+                modelName: modelName,
+                apiKey: apiKey,
+                apiEndpoint: apiEndpoint,
+                includeResponseFormat: true
+            )
+        } catch let error as OpenAIError {
+            guard self.shouldRetryWithoutResponseFormat(error) else {
+                throw error
+            }
+            return try await self.performTextTransformRequest(
+                prompt: prompt,
+                modelName: modelName,
+                apiKey: apiKey,
+                apiEndpoint: apiEndpoint,
+                includeResponseFormat: false
+            )
         }
+    }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = [
-            "model": modelName,
-            "messages": [
-                ["role": "system", "content": "You are a helpful assistant that transforms text according to user instructions. Return only the transformed text as a JSON object with a 'result' field."],
-                ["role": "user", "content": prompt]
-            ],
-            "response_format": [
-                "type": "json_schema",
-                "json_schema": [
-                    "name": "text_transform_response",
-                    "strict": true,
-                    "schema": [
-                        "type": "object",
-                        "properties": [
-                            "result": [
-                                "type": "string",
-                                "description": "The transformed text"
-                            ]
-                        ],
-                        "required": ["result"],
-                        "additionalProperties": false
-                    ] as [String: Any]
-                ] as [String: Any]
-            ] as [String: Any]
-        ]
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    private static func performTextTransformRequest(
+        prompt: String,
+        modelName: String,
+        apiKey: String,
+        apiEndpoint: String,
+        includeResponseFormat: Bool
+    ) async throws -> String {
+        let body = self.textTransformBody(prompt: prompt, modelName: modelName, includeResponseFormat: includeResponseFormat)
+        let request = try self.makeURLRequest(body: body, apiKey: apiKey, apiEndpoint: apiEndpoint)
 
         // Send async request
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -405,19 +544,71 @@ public enum OpenAIClient {
         guard let jsonDict = jsonObject as? [String: Any],
               let choices = jsonDict["choices"] as? [[String: Any]],
               let firstChoice = choices.first,
-              let message = firstChoice["message"] as? [String: Any],
-              let contentString = message["content"] as? String else {
+              let message = firstChoice["message"] as? [String: Any] else {
             throw OpenAIError.invalidResponseStructure(jsonObject)
         }
-
-        // Parse the structured JSON response
-        guard let contentData = contentString.data(using: .utf8),
-              let parsedContent = try JSONSerialization.jsonObject(with: contentData) as? [String: Any],
-              let result = parsedContent["result"] as? String else {
-            throw OpenAIError.parseError("Failed to parse structured response")
+        for contentString in self.contentStrings(from: message) {
+            if let result = self.parseTextTransformContent(contentString) {
+                return result
+            }
         }
+        throw OpenAIError.parseError("Failed to parse text transform response")
+    }
 
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func textTransformBody(prompt: String, modelName: String, includeResponseFormat: Bool) -> [String: Any] {
+        let userPrompt = includeResponseFormat
+            ? prompt
+            : prompt + "\n\nReturn only the transformed text as a JSON object with a 'result' field. Do not include markdown code fences or any other text."
+        var body: [String: Any] = [
+            "model": modelName,
+            "messages": [
+                ["role": "system", "content": "You are a helpful assistant that transforms text according to user instructions."],
+                ["role": "user", "content": userPrompt]
+            ]
+        ]
+        if includeResponseFormat {
+            body["response_format"] = [
+                "type": "json_schema",
+                "json_schema": [
+                    "name": "text_transform_response",
+                    "strict": true,
+                    "schema": [
+                        "type": "object",
+                        "properties": [
+                            "result": [
+                                "type": "string",
+                                "description": "The transformed text"
+                            ]
+                        ],
+                        "required": ["result"],
+                        "additionalProperties": false
+                    ] as [String: Any]
+                ] as [String: Any]
+            ] as [String: Any]
+        }
+        return body
+    }
+
+    static func parseTextTransformContent(_ rawContent: String) -> String? {
+        let content = self.stripMarkdownFence(rawContent)
+        if let object = self.jsonObject(from: content) {
+            if let dictionary = object as? [String: Any], let result = dictionary["result"] as? String {
+                return result.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let string = object as? String {
+                return string.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        if let start = content.firstIndex(of: "{"),
+           let end = content.lastIndex(of: "}"),
+           start < end,
+           let object = self.jsonObject(from: String(content[start...end])),
+           let dictionary = object as? [String: Any],
+           let result = dictionary["result"] as? String {
+            return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

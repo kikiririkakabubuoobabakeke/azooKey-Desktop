@@ -9,6 +9,7 @@ struct ConfigWindow: View {
     @ConfigState private var punctuationStyle = Config.PunctuationStyle()
     @ConfigState private var typeHalfSpace = Config.TypeHalfSpace()
     @ConfigState private var optionDirectFullWidthInput = Config.OptionDirectFullWidthInput()
+    @ConfigState private var capsLockInputModeSwitch = Config.CapsLockInputModeSwitch()
     @ConfigState private var zenzaiProfile = Config.ZenzaiProfile()
     @ConfigState private var zenzaiPersonalizationLevel = Config.ZenzaiPersonalizationLevel()
     @ConfigState private var openAiApiKey = Config.OpenAiApiKey()
@@ -373,7 +374,7 @@ struct ConfigWindow: View {
                             Text("Foundation Models").tag(Config.AIBackendPreference.Value.foundationModels)
                         }
 
-                        Text("OpenAI API").tag(Config.AIBackendPreference.Value.openAI)
+                        Text("OpenAI互換API").tag(Config.AIBackendPreference.Value.openAI)
                     }
                     .onAppear {
                         if !availabilityCheckDone {
@@ -403,6 +404,21 @@ struct ConfigWindow: View {
 
                 if aiBackend.value == .openAI {
                     HStack {
+                        Menu("プリセット") {
+                            Button("OpenAI") {
+                                $openAiApiEndpoint.wrappedValue = "https://api.openai.com/v1/chat/completions"
+                                $openAiModelName.wrappedValue = "gpt-4o-mini"
+                            }
+                            Button("OpenCode Go") {
+                                $openAiApiEndpoint.wrappedValue = "https://opencode.ai/inference/go/openai/v1/chat/completions"
+                                $openAiModelName.wrappedValue = "glm-5.3-flash"
+                            }
+                        }
+                        Text("OpenCode GoはOpenAI互換APIとして利用できます")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
                         SecureField("APIキー", text: $openAiApiKey, prompt: Text("例:sk-xxxxxxxxxxx"))
                         helpButton(
                             helpContent: "OpenAI APIキーはローカルのみで管理され、外部に公開されることはありません。生成の際にAPIを利用するため、課金が発生します。",
@@ -411,7 +427,7 @@ struct ConfigWindow: View {
                     }
                     TextField("モデル名", text: $openAiModelName, prompt: Text("例: gpt-4o-mini"))
                     TextField("エンドポイント", text: $openAiApiEndpoint, prompt: Text("例: https://api.openai.com/v1/chat/completions"))
-                        .help("例: https://api.openai.com/v1/chat/completions\nGemini: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
+                        .help("例: https://api.openai.com/v1/chat/completions\nOpenCode Go: https://opencode.ai/inference/go/openai/v1/chat/completions\nGemini: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
 
                     HStack {
                         Button("接続テスト") {
@@ -521,6 +537,13 @@ struct ConfigWindow: View {
                 Toggle("円記号の代わりにバックスラッシュを入力", isOn: $typeBackSlash)
                 Toggle("スペースは常に半角を入力", isOn: $typeHalfSpace)
                 Toggle("Optionキーで直接全角英数を入力", isOn: $optionDirectFullWidthInput)
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Caps Lockで英数/かなを切り替え", isOn: $capsLockInputModeSwitch)
+                    Text("Shift+Caps Lockは大文字固定になります。macOSの「Caps LockキーでABCと切り替え」はオフにしてください。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Picker("句読点の種類", selection: $punctuationStyle) {
                     Text("、と。").tag(Config.PunctuationStyle.Value.`kutenAndToten`)
                     Text("、と．").tag(Config.PunctuationStyle.Value.periodAndToten)
