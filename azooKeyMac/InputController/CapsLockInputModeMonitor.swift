@@ -101,7 +101,9 @@ final class CapsLockInputModeMonitor {
 
         if currentState {
             // Caps Lockがオンになった直後にオフへ戻す
-            self.writeCapsLockState(false)
+            guard self.writeCapsLockState(false) else {
+                return
+            }
             self.lastCapsLockState = false
         }
         self.activeController?.toggleInputLanguageForCapsLock()
@@ -149,13 +151,15 @@ final class CapsLockInputModeMonitor {
         return state
     }
 
-    private func writeCapsLockState(_ enabled: Bool) {
+    private func writeCapsLockState(_ enabled: Bool) -> Bool {
         guard let connection = self.openConnectionIfNeeded() else {
-            return
+            return false
         }
         let result = IOHIDSetModifierLockState(connection, Int32(kIOHIDCapsLockState), enabled)
         if result != KERN_SUCCESS {
             self.closeConnection()
+            return false
         }
+        return true
     }
 }

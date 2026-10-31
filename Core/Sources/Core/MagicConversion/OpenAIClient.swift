@@ -447,7 +447,8 @@ public enum OpenAIClient {
             .filter { line in
                 !line.hasPrefix("```") && !line.hasPrefix("Predictions:")
             }
-        return lines.filter { seen.insert($0).inserted }.prefix(10).map { $0 }
+        let uniqueLines = lines.filter { seen.insert($0).inserted }
+        return Array(uniqueLines.prefix(10))
     }
 
     private static func cleanFallbackLine(_ rawLine: String) -> String? {

@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 
-@Test func testRequestIncludesStructuredOutputByDefault() throws {
+@Test func testRequestIncludesStructuredOutputByDefault() {
     let request = OpenAIRequest(prompt: "文脈", target: "りんご", modelName: "test-model")
     let body = request.toJSON()
 

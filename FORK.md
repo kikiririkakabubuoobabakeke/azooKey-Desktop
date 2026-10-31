@@ -25,7 +25,8 @@ Caps Lockの状態はIOKitで監視し、ShiftなしでCaps Lockがオンにな�
 - エンドポイント: `https://opencode.ai/inference/go/openai/v1/chat/completions`
 - モデル: `glm-5.3-flash`
 
-APIキーにはOpenCode GoのAPIキーを入力してください。
+APIキーには [OpenCode Console](https://opencode.ai/console) で発行したOpenCode GoのAPIキーを入力してください。
+モデル名を変えたい場合は `deepseek-v4.1-flash` や `kimi-k3` なども指定できます。
 
 OpenCode GoはOpenAI互換APIなので、`response_format` のJSON Schemaに対応していない
 モデルでも動くように、以下のフォールバックを追加しています。
