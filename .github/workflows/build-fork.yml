@@ -21,6 +21,11 @@ jobs:
           submodules: recursive
           lfs: true
 
+      - name: Pull LFS files in submodules
+        run: |
+          git lfs pull
+          git submodule foreach --recursive 'git lfs pull'
+
       - name: Build
         run: |
           xcodebuild \

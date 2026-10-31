@@ -18,7 +18,7 @@ final class CapsLockInputModeMonitor {
     private var ioConnection: io_connect_t = 0
     private var lastCapsLockState = false
     private var shiftHistory: [Bool] = []
-    private var isEnabled = Config.CapsLockInputModeSwitch.value
+    private var isEnabled = Config.CapsLockInputModeSwitch().value
     private var observer: NSObjectProtocol?
 
     private static let pollingInterval: TimeInterval = 0.01
@@ -30,7 +30,7 @@ final class CapsLockInputModeMonitor {
         guard self.timer == nil else {
             return
         }
-        self.isEnabled = Config.CapsLockInputModeSwitch.value
+        self.isEnabled = Config.CapsLockInputModeSwitch().value
         self.lastCapsLockState = self.readCapsLockState() ?? false
         self.shiftHistory.removeAll(keepingCapacity: true)
         self.observer = NotificationCenter.default.addObserver(
@@ -39,12 +39,14 @@ final class CapsLockInputModeMonitor {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.isEnabled = Config.CapsLockInputModeSwitch.value
+                self?.isEnabled = Config.CapsLockInputModeSwitch().value
             }
         }
 
         let timer = Timer(timeInterval: Self.pollingInterval, repeats: true) { [weak self] _ in
-            self?.poll()
+            MainActor.assumeIsolated {
+                self?.poll()
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer

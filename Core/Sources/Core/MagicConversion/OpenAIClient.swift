@@ -347,7 +347,7 @@ public enum OpenAIClient {
         urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("azooKeyMac/1.0 (macOS input method)", forHTTPHeaderField: "User-Agent")
-        if url.host?.hasSuffix("opencode.ai") == true {
+        if url.host?.lowercased().hasSuffix("opencode.ai") == true {
             urlRequest.setValue(Self.openCodeSessionID, forHTTPHeaderField: "x-opencode-session")
         }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -355,7 +355,7 @@ public enum OpenAIClient {
     }
 
     private static func prefersStructuredOutput(for apiEndpoint: String) -> Bool {
-        guard let host = URL(string: apiEndpoint)?.host else {
+        guard let host = URL(string: apiEndpoint)?.host?.lowercased() else {
             return true
         }
         // OpenCode Goはresponse_format非対応の場合があるため、JSON指示のみで試す

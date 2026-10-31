@@ -97,7 +97,7 @@ extension azooKeyMacInputController {
     }
 
     @objc func openGitHubRepository(_ sender: Any) {
-        guard let url = URL(string: "https://github.com/azooKey/azooKey-Desktop") else {
+        guard let url = URL(string: "https://github.com/kikiririkakabubuoobabakeke/azooKey-Desktop") else {
             return
         }
         NSWorkspace.shared.open(url)

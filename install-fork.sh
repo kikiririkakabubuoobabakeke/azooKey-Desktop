@@ -13,11 +13,15 @@ fi
 xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
 
 # CODE_SIGNING_ALLOWED=NOでビルドしたアプリにad-hoc署名を付ける
-ENTITLEMENTS="$(mktemp -t azookey-entitlements)"
-trap 'rm -f "$ENTITLEMENTS"' EXIT
-sed 's/$(PRODUCT_BUNDLE_IDENTIFIER)/dev.ensan.inputmethod.azooKeyMac/g' \
-    "$REPO_ROOT/azooKeyMac/azooKeyMac.entitlements" > "$ENTITLEMENTS"
-codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP_PATH"
+if [[ "${AZOOKEY_NO_SANDBOX:-0}" == "1" ]]; then
+    codesign --force --deep --sign - "$APP_PATH"
+else
+    ENTITLEMENTS="$(mktemp -t azookey-entitlements)"
+    trap 'rm -f "$ENTITLEMENTS"' EXIT
+    sed 's/$(PRODUCT_BUNDLE_IDENTIFIER)/dev.ensan.inputmethod.azooKeyMac/g' \
+        "$REPO_ROOT/azooKeyMac/azooKeyMac.entitlements" > "$ENTITLEMENTS"
+    codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP_PATH"
+fi
 codesign --verify --deep --strict "$APP_PATH"
 
 sudo rm -rf "/Library/Input Methods/azooKeyMac.app"

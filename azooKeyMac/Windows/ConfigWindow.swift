@@ -421,11 +421,12 @@ struct ConfigWindow: View {
                     HStack {
                         SecureField("APIキー", text: $openAiApiKey, prompt: Text("例:sk-xxxxxxxxxxx"))
                         helpButton(
-                            helpContent: "OpenAI APIキーはローカルのみで管理され、外部に公開されることはありません。生成の際にAPIを利用するため、課金が発生します。",
+                            helpContent: "APIキーはローカルのみで管理され、外部に公開されることはありません。生成の際にAPIを利用するため、課金が発生します。",
                             isPresented: $openAiApiKeyPopover
                         )
                     }
                     TextField("モデル名", text: $openAiModelName, prompt: Text("例: gpt-4o-mini"))
+                        .help("OpenCode Goの例: glm-5.3-flash, deepseek-v4.1-flash, kimi-k3")
                     TextField("エンドポイント", text: $openAiApiEndpoint, prompt: Text("例: https://api.openai.com/v1/chat/completions"))
                         .help("例: https://api.openai.com/v1/chat/completions\nOpenCode Go: https://opencode.ai/inference/go/openai/v1/chat/completions\nGemini: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
 

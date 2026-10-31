@@ -38,6 +38,15 @@ OpenCode GoはOpenAI互換APIなので、`response_format` のJSON Schemaに対�
 > OpenCode Goは本来コーディングエージェント向けのサービスです。IMEからの利用が
 > 利用規約上・料金上どう扱われるかはOpenCode側のポリシーを確認してください。
 
+## 既知の制限
+
+- 「システム設定 > キーボード > キーボードショートカット > 修飾キー...」でCaps Lockを
+  「Caps Lock」以外に割り当てている場合は、この機能は動きません。
+- Caps Lockの状態を10ms間隔で監視しているため、押した瞬間にCaps Lockインジケータが
+  一瞬表示されることがあります。
+- ad-hoc署名でインストールした場合、既存のazooKeyの設定やKeychainのAPIキーが
+  引き継がれないことがあります。その場合は設定を入力し直してください。
+
 ## ビルド済みアプリ
 
 GitHub Actions の `Build Fork App` ワークフローで、署名なしの `.app` をビルドできます。
@@ -50,3 +59,9 @@ unzip azooKeyMac-fork.zip
 
 `install-fork.sh` はad-hoc署名を付けて `/Library/Input Methods/` にコピーします。
 インストール後、macOSからログアウトして再ログインし、入力ソースにazooKeyを追加してください。
+
+ad-hoc署名とApp Sandboxの組み合わせでアプリが起動しない場合は、Sandboxなしで署名できます。
+
+```bash
+AZOOKEY_NO_SANDBOX=1 ./install-fork.sh ./azooKeyMac.app
+```
