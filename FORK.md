@@ -55,7 +55,7 @@ ActionsのArtifact、またはReleaseから `azooKeyMac-fork.zip` をダウン�
 
 ```bash
 unzip azooKeyMac-fork.zip
-./install-fork.sh ./azooKeyMac.app
+bash install-fork.sh ./azooKeyMac.app
 ```
 
 `install-fork.sh` はad-hoc署名を付けて `/Library/Input Methods/` にコピーします。
@@ -64,5 +64,5 @@ unzip azooKeyMac-fork.zip
 ad-hoc署名とApp Sandboxの組み合わせでアプリが起動しない場合は、Sandboxなしで署名できます。
 
 ```bash
-AZOOKEY_NO_SANDBOX=1 ./install-fork.sh ./azooKeyMac.app
+AZOOKEY_NO_SANDBOX=1 bash install-fork.sh ./azooKeyMac.app
 ```
