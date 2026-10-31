@@ -1,7 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_PATH="${1:-}"
 
 if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
@@ -18,8 +17,24 @@ if [[ "${AZOOKEY_NO_SANDBOX:-0}" == "1" ]]; then
 else
     ENTITLEMENTS="$(mktemp -t azookey-entitlements)"
     trap 'rm -f "$ENTITLEMENTS"' EXIT
-    sed 's/$(PRODUCT_BUNDLE_IDENTIFIER)/dev.ensan.inputmethod.azooKeyMac/g' \
-        "$REPO_ROOT/azooKeyMac/azooKeyMac.entitlements" > "$ENTITLEMENTS"
+    cat > "$ENTITLEMENTS" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.dev.ensan.inputmethod.azooKeyMac</string>
+    </array>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.temporary-exception.mach-register.global-name</key>
+    <string>dev.ensan.inputmethod.azooKeyMac_Connection</string>
+</dict>
+</plist>
+PLIST
     codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP_PATH"
 fi
 codesign --verify --deep --strict "$APP_PATH"
