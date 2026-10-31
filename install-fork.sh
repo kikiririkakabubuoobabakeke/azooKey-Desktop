@@ -52,10 +52,17 @@ if command -v swiftc >/dev/null 2>&1; then
 import Carbon
 import Foundation
 
+let bundleID = "dev.ensan.inputmethod.azooKeyMac"
 let appURL = URL(fileURLWithPath: "/Library/Input Methods/azooKeyMac.app")
-_ = TISRegisterInputSource(appURL as CFURL)
 
-let sourceID = "dev.ensan.inputmethod.azooKeyMac.Japanese"
+// すでに登録済みならTISRegisterInputSourceを繰り返さない（重複登録を避ける）
+let bundleFilter = [kTISPropertyBundleID as String: bundleID] as CFDictionary
+let registeredSources = TISCreateInputSourceList(bundleFilter, true)?.takeRetainedValue() as? [TISInputSource] ?? []
+if registeredSources.isEmpty {
+    _ = TISRegisterInputSource(appURL as CFURL)
+}
+
+let sourceID = "\(bundleID).Japanese"
 let filter = [kTISPropertyInputSourceID as String: sourceID] as CFDictionary
 if let sources = TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource],
    let source = sources.first {
