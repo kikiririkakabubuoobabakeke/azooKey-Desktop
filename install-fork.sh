@@ -8,6 +8,9 @@ if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
     exit 1
 fi
 
+TMP_DIR="$(mktemp -d -t azookey-install)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
 # ダウンロードしたアプリのquarantine属性を外す
 xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
 
@@ -15,8 +18,7 @@ xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
 if [[ "${AZOOKEY_NO_SANDBOX:-0}" == "1" ]]; then
     codesign --force --deep --sign - "$APP_PATH"
 else
-    ENTITLEMENTS="$(mktemp -t azookey-entitlements)"
-    trap 'rm -f "$ENTITLEMENTS"' EXIT
+    ENTITLEMENTS="$TMP_DIR/entitlements.plist"
     cat > "$ENTITLEMENTS" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -43,5 +45,29 @@ sudo rm -rf "/Library/Input Methods/azooKeyMac.app"
 sudo cp -R "$APP_PATH" "/Library/Input Methods/"
 pkill azooKeyMac 2>/dev/null || true
 
+# アプリを置き換えると入力ソースが無効になることがあるため、再登録を試みる。
+# swiftcがない環境では、システム設定から手動で追加してもらう。
+if command -v swiftc >/dev/null 2>&1; then
+    cat > "$TMP_DIR/register.swift" <<'SWIFT'
+import Carbon
+import Foundation
+
+let appURL = URL(fileURLWithPath: "/Library/Input Methods/azooKeyMac.app")
+_ = TISRegisterInputSource(appURL as CFURL)
+
+let sourceID = "dev.ensan.inputmethod.azooKeyMac.Japanese"
+let filter = [kTISPropertyInputSourceID as String: sourceID] as CFDictionary
+if let sources = TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource],
+   let source = sources.first {
+    _ = TISEnableInputSource(source)
+    _ = TISSelectInputSource(source)
+}
+SWIFT
+    if swiftc "$TMP_DIR/register.swift" -o "$TMP_DIR/register" >/dev/null 2>&1; then
+        "$TMP_DIR/register" >/dev/null 2>&1 || true
+    fi
+fi
+
 echo "azooKeyMacを/Library/Input Methodsにインストールしました。"
-echo "macOSからログアウトして再ログインし、入力ソースにazooKeyを追加してください。"
+echo "入力ソースが表示されない場合は、macOSからログアウトして再ログインするか、"
+echo "システム設定 > キーボード > 入力ソース からazooKeyを追加してください。"

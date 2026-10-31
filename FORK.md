@@ -59,7 +59,12 @@ bash install-fork.sh ./azooKeyMac.app
 ```
 
 `install-fork.sh` はad-hoc署名を付けて `/Library/Input Methods/` にコピーします。
-インストール後、macOSからログアウトして再ログインし、入力ソースにazooKeyを追加してください。
+アプリを置き換えるとmacOS側で入力ソースが無効になることがあるため、スクリプトは
+`TISRegisterInputSource` / `TISEnableInputSource` による再登録も試みます。
+
+それでも入力ソースにazooKeyが表示されない場合は、macOSからログアウトして再ログインするか、
+システム設定 > キーボード > 入力ソース > 編集... > 「+」からazooKeyを追加してください。
+（同じBundle IDのアプリを置き換えているため、入力ソース名は「azooKey」のままです。）
 
 ad-hoc署名とApp Sandboxの組み合わせでアプリが起動しない場合は、Sandboxなしで署名できます。
 
