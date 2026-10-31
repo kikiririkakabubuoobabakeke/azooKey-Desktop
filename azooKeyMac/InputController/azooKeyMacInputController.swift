@@ -1,3 +1,4 @@
+import Carbon
 import Cocoa
 import Core
 import InputMethodKit
@@ -575,22 +576,45 @@ class azooKeyMacInputController: IMKInputController, NSMenuItemValidation { // s
         case .japanese:
             client.selectMode("dev.ensan.inputmethod.azooKeyMac.Japanese")
         }
+        self.verifyInputSource(language)
+    }
+
+    /// `selectMode`が反映されなかった場合に、TIS経由で入力ソースを切り替える。
+    private func verifyInputSource(_ language: InputLanguage) {
+        let expectedID = language == .english
+            ? "dev.ensan.inputmethod.azooKeyMac.Roman"
+            : "dev.ensan.inputmethod.azooKeyMac.Japanese"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+                  let pointer = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else {
+                return
+            }
+            let currentID = Unmanaged<CFString>.fromOpaque(pointer).takeUnretainedValue() as String
+            guard currentID.hasPrefix("dev.ensan.inputmethod.azooKeyMac"), currentID != expectedID else {
+                return
+            }
+            let filter = [kTISPropertyInputSourceID as String: expectedID] as CFDictionary
+            if let sources = TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource],
+               let expected = sources.first {
+                _ = TISSelectInputSource(expected)
+            }
+        }
     }
 
     /// Caps Lockによる英数/かなの切り替え。
     /// JISキーボードの「英数」「かな」キーを押したときと同じ処理を行う。
     @MainActor
-    func toggleInputLanguageForCapsLock() {
+    func toggleInputLanguageForCapsLock(currentLanguage: InputLanguage) {
         guard let client = self.client() else {
             return
         }
-        let target: InputLanguage = self.inputLanguage == .japanese ? .english : .japanese
+        let target: InputLanguage = currentLanguage == .japanese ? .english : .japanese
         let action: UserAction = target == .english ? .英数 : .かな
         self.appendDebugMessage("Caps Lock: switch input language to \(target == .english ? "english" : "japanese")")
         let (clientAction, clientActionCallback) = self.inputState.event(
             eventCore: .init(modifierFlags: [], characters: nil, charactersIgnoringModifiers: nil, keyCode: 0),
             userAction: action,
-            inputLanguage: self.inputLanguage,
+            inputLanguage: currentLanguage,
             liveConversionEnabled: self.liveConversionEnabled,
             enableDebugWindow: false,
             enableSuggestion: false

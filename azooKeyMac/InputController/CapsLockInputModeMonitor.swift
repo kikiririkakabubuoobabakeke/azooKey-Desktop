@@ -1,3 +1,4 @@
+import Carbon
 import Cocoa
 import Core
 import IOKit
@@ -65,6 +66,8 @@ final class CapsLockInputModeMonitor {
     func setActiveController(_ controller: azooKeyMacInputController) {
         self.activeController = controller
         self.start()
+        self.lastCapsLockState = self.readCapsLockState() ?? self.lastCapsLockState
+        self.shiftHistory.removeAll(keepingCapacity: true)
     }
 
     func clearActiveController(_ controller: azooKeyMacInputController) {
@@ -94,6 +97,10 @@ final class CapsLockInputModeMonitor {
         guard self.isEnabled, self.activeController != nil else {
             return
         }
+        // macOS側で入力ソースが切り替わっている場合は干渉しない
+        guard let currentLanguage = self.currentAzooKeyLanguage() else {
+            return
+        }
         // Shift+Caps Lockは大文字固定のための操作として扱う
         guard !self.shiftHistory.contains(true) else {
             return
@@ -106,7 +113,23 @@ final class CapsLockInputModeMonitor {
             }
             self.lastCapsLockState = false
         }
-        self.activeController?.toggleInputLanguageForCapsLock()
+        self.activeController?.toggleInputLanguageForCapsLock(currentLanguage: currentLanguage)
+    }
+
+    private func currentAzooKeyLanguage() -> InputLanguage? {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let pointer = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else {
+            return nil
+        }
+        let sourceID = Unmanaged<CFString>.fromOpaque(pointer).takeUnretainedValue() as String
+        switch sourceID {
+        case "dev.ensan.inputmethod.azooKeyMac.Japanese":
+            return .japanese
+        case "dev.ensan.inputmethod.azooKeyMac.Roman":
+            return .english
+        default:
+            return nil
+        }
     }
 
     private func openConnectionIfNeeded() -> io_connect_t? {
