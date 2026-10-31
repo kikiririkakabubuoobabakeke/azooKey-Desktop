@@ -70,7 +70,6 @@ final class CapsLockInputModeMonitor {
             return
         }
         self.activeController = nil
-        self.stop()
     }
 
     private func poll() {

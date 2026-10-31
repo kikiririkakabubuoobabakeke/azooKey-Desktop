@@ -283,24 +283,25 @@ public enum OpenAIClient {
 
     // APIリクエストを送信する静的メソッド
     public static func sendRequest(_ request: OpenAIRequest, apiKey: String, apiEndpoint: String, logger: ((String) -> Void)? = nil) async throws -> [String] {
+        let includeResponseFormat = self.prefersStructuredOutput(for: apiEndpoint)
         do {
             return try await self.performRequest(
                 request,
                 apiKey: apiKey,
                 apiEndpoint: apiEndpoint,
-                includeResponseFormat: true,
+                includeResponseFormat: includeResponseFormat,
                 logger: logger
             )
         } catch let error as OpenAIError {
-            guard self.shouldRetryWithoutResponseFormat(error) else {
+            guard self.shouldRetryWithAlternateResponseFormat(error) else {
                 throw error
             }
-            logger?("Retrying without response_format after error: \(error.localizedDescription)")
+            logger?("Retrying with alternate response_format after error: \(error.localizedDescription)")
             return try await self.performRequest(
                 request,
                 apiKey: apiKey,
                 apiEndpoint: apiEndpoint,
-                includeResponseFormat: false,
+                includeResponseFormat: !includeResponseFormat,
                 logger: logger
             )
         }
@@ -353,7 +354,15 @@ public enum OpenAIClient {
         return urlRequest
     }
 
-    private static func shouldRetryWithoutResponseFormat(_ error: OpenAIError) -> Bool {
+    private static func prefersStructuredOutput(for apiEndpoint: String) -> Bool {
+        guard let host = URL(string: apiEndpoint)?.host else {
+            return true
+        }
+        // OpenCode Goはresponse_format非対応の場合があるため、JSON指示のみで試す
+        return !host.hasSuffix("opencode.ai")
+    }
+
+    private static func shouldRetryWithAlternateResponseFormat(_ error: OpenAIError) -> Bool {
         switch error {
         case .invalidResponseStatus(let code, _):
             return code == 400 || code == 422
@@ -494,16 +503,17 @@ public enum OpenAIClient {
 
     // Simple text transformation method for AI Transform feature
     public static func sendTextTransformRequest(prompt: String, modelName: String, apiKey: String, apiEndpoint: String) async throws -> String {
+        let includeResponseFormat = self.prefersStructuredOutput(for: apiEndpoint)
         do {
             return try await self.performTextTransformRequest(
                 prompt: prompt,
                 modelName: modelName,
                 apiKey: apiKey,
                 apiEndpoint: apiEndpoint,
-                includeResponseFormat: true
+                includeResponseFormat: includeResponseFormat
             )
         } catch let error as OpenAIError {
-            guard self.shouldRetryWithoutResponseFormat(error) else {
+            guard self.shouldRetryWithAlternateResponseFormat(error) else {
                 throw error
             }
             return try await self.performTextTransformRequest(
@@ -511,7 +521,7 @@ public enum OpenAIClient {
                 modelName: modelName,
                 apiKey: apiKey,
                 apiEndpoint: apiEndpoint,
-                includeResponseFormat: false
+                includeResponseFormat: !includeResponseFormat
             )
         }
     }
