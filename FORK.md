@@ -41,6 +41,10 @@ OpenCode GoはOpenAI互換APIなので、`response_format` のJSON Schemaに対�
 
 ## 既知の制限
 
+- 入力メニューに「日本語」が2つ見える場合、片方はmacOS標準の日本語入力、もう片方はazooKeyです。
+  azooKey側の重複ではないため、不要な方をシステム設定から削除してください。
+- Caps Lockで全角→半角に切り替わらない場合は、macOSの
+  「Caps LockキーでABCと切り替え」がオンになっていないか確認してください。
 - 「システム設定 > キーボード > キーボードショートカット > 修飾キー...」でCaps Lockを
   「Caps Lock」以外に割り当てている場合は、この機能は動きません。
 - Caps Lockの状態を10ms間隔で監視しているため、押した瞬間にCaps Lockインジケータが

@@ -2,9 +2,17 @@ name: Build Fork App
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to publish (optional, e.g. v0.1.5-fork.2)"
+        required: false
+        type: string
   push:
     branches:
       - main
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -50,3 +58,13 @@ jobs:
           name: azooKeyMac-fork
           path: azooKeyMac-fork.zip
           retention-days: 30
+
+      - name: Publish release asset
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "${{ github.repository }}" --title "$TAG" --notes "azooKey Desktop fork build" --prerelease
+          gh release upload "$TAG" azooKeyMac-fork.zip install-fork.sh FORK.md --repo "${{ github.repository }}" --clobber
